@@ -1,0 +1,77 @@
+---
+title: "Machine Learning Project"
+author: "T. Babola"
+date: "8/3/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+```
+
+# Overview
+
+This project loads in labeled data from body sensors that describe whether or not an excercise is being performed correct. Here, we use this labeled data to create a random forest model for predicting unlabeled test data. We achieve >99% prediction accuracy using cross-validation techniques, suggesting this model is a very accurate predictor.
+
+## Load the data and preprocess
+
+Load data into memory. After exploratory data analysis, it looks like the test data contains no new_window = "yes" values. When this value is "yes" in the training dataset, it includes many values that are typically NA when the value is "no". An explanation could not easily be found on the website, so these values are removed from the dataset. Then, the first seven columns containing data associated with the participant were removed. Finally, columns containing only NA's are removed.
+
+```{r, cache = TRUE}
+trainData <- read.csv("./Data/pml-training.csv")
+testData <- read.csv("./Data/pml-testing.csv")
+str(testData$new_window)
+trainData <- trainData[trainData$new_window=="no",]
+trainData <- trainData[,-c(1:7)]
+trainData[trainData== ""] <- NA
+trainData <- trainData[,colSums(!is.na(trainData))>0]
+#summary(trainData)
+```
+
+## Setting up and training the model
+
+Here, we load the required libraries to set up our model with parallel cluster processing. In this case, we split the training data from the original data set (60% train, 40% test) for cross-validation. We train the model using random forest from the caret package.
+
+```{r, cache = TRUE}
+library(caret)
+library(parallel)
+library(doParallel)
+cluster <- makeCluster(detectCores() - 1) # convention to leave 1 core for OS
+registerDoParallel(cluster)
+
+inTrain = createDataPartition(trainData[,1], p = .6, list=FALSE)
+train2 = trainData[inTrain,]
+test2 = trainData[-inTrain,]
+
+fitControl <- trainControl(method = "cv", number = 5, allowParallel = TRUE)
+train <- train(classe~.,data=train2,method="rf",trControl = fitControl)
+train
+
+stopCluster(cluster)
+registerDoSEQ()
+
+```
+
+
+## Cross validation
+
+Then, we cross-validate on test2, which contains labeled data so that we can see how well our model does.
+
+```{r, cache=TRUE}
+  predict_model<- predict(train,newdata=test2)
+ matrix_modelPCA <- confusionMatrix(predict_model,test2$classe)
+ matrix_modelPCA$overall[1]
+```
+
+
+
+The in-sample and out-of-sample errors are extremely low (accuracy is high). It is somewhat strange that the out-of-sample error is actually slightly less than the best in-sample error, however it is a very small difference (~0.003). This is likely due to the random sampling process. Given that the accuracy of the predictions is very high on the cross-validation set (>99%), we would have high confidence in the predictions made from the test set.
+
+We then predict on the test set... output is suppressed for Honor Code requirements.
+
+```{r results='hide'}
+ predict_testdata <- predict(train,newdata=testData)
+ predict_testdata
+ 
+```
